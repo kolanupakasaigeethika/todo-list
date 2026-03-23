@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Todo Dashboard</title>
+
+  <style>
+    body {
+      font-family: Arial;
+      background: #f4f6f8;
+      text-align: center;
+      transition: 0.3s;
+    }
+
+    .header {
+      display: flex;
+      justify-content: space-between;
+      padding: 20px;
+      background: white;
+      border-radius: 10px;
+      margin: 20px;
+    }
+
+    .controls {
+      margin: 20px;
+    }
+
+    input, button {
+      padding: 10px;
+      margin: 5px;
+      border-radius: 6px;
+    }
+
+    button {
+      cursor: pointer;
+      background: #007bff;
+      color: white;
+      border: none;
+    }
+
+    .filters button {
+      background: #ddd;
+      color: black;
+    }
+
+    .active {
+      background: #007bff !important;
+      color: white !important;
+    }
+
+    .todo {
+      background: white;
+      margin: 10px auto;
+      padding: 15px;
+      width: 60%;
+      border-radius: 10px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      transition: 0.3s;
+    }
+
+    .completed {
+      text-decoration: line-through;
+      color: gray;
+    }
+
+    .overdue {
+      background: #ffcccc;
+    }
+
+    .done {
+      background: #ccffcc;
+    }
+
+    /* 🌙 DARK MODE */
+    .dark {
+      background: #121212;
+      color: white;
+    }
+
+    .dark .header {
+      background: #1e1e1e;
+    }
+
+    .dark .todo {
+      background: #2a2a2a;
+      color: white;
+    }
+
+    .dark input {
+      background: #333;
+      color: white;
+      border: none;
+    }
+
+    .dark button {
+      background: #444;
+      color: white;
+    }
+
+    .dark .filters button {
+      background: #333;
+      color: white;
+    }
+  </style>
+</head>
+
+<body>
+
+<div class="header">
+  <h2>📝 My Todo Dashboard</h2>
+
+  <div>
+    <span id="time"></span>
+    <button onclick="toggleDarkMode()" id="themeBtn">🌙 Dark Mode</button>
+  </div>
+</div>
+
+
+<div class="controls">
+  <input id="taskInput" placeholder="Add a new todo..." />
+  <input type="date" id="dateInput" />
+  <button onclick="addTodo()">Add</button>
+</div>
+
+<div class="filters">
+  <button onclick="setFilter('all', this)" class="active">📋 All</button>
+  <button onclick="setFilter('pending', this)">⏳ Pending</button>
+  <button onclick="setFilter('completed', this)">✅ Completed</button>
+  <button onclick="setFilter('overdue', this)">🚨 Overdue</button>
+</div>
+
+<div id="list"></div>
+
+<script>
+const API = "http://localhost:5000/api/todos";
+let currentFilter = "all";
+
+// 🕒 TIME
+setInterval(() => {
+  document.getElementById("time").innerText = new Date().toLocaleString();
+}, 1000);
+
+// 🌙 DARK MODE LOAD
+if (localStorage.getItem("theme") === "dark") {
+  document.body.classList.add("dark");
+  document.getElementById("themeBtn").innerText = "☀ Light Mode";
+}
+
+// 🌙 TOGGLE
+function toggleDarkMode() {
+  const btn = document.getElementById("themeBtn");
+
+  document.body.classList.toggle("dark");
+
+  if (document.body.classList.contains("dark")) {
+    localStorage.setItem("theme", "dark");
+    btn.innerText = "☀ Light Mode";
+  } else {
+    localStorage.setItem("theme", "light");
+    btn.innerText = "🌙 Dark Mode";
+  }
+}
+
+// 📥 FETCH TODOS
+async function fetchTodos() {
+  const res = await fetch(API);
+  const data = await res.json();
+
+  const list = document.getElementById("list");
+  list.innerHTML = "";
+
+  const today = new Date();
+
+  data.forEach(todo => {
+
+    if (currentFilter === "completed" && !todo.completed) return;
+    if (currentFilter === "pending" && todo.completed) return;
+    if (currentFilter === "overdue" && (!todo.dueDate || new Date(todo.dueDate) >= today)) return;
+
+    const div = document.createElement("div");
+    div.className = "todo";
+
+    if (todo.completed) div.classList.add("done");
+
+    if (todo.dueDate && new Date(todo.dueDate) < today && !todo.completed) {
+      div.classList.add("overdue");
+    }
+
+    div.innerHTML = `
+      <div>
+        <input type="checkbox" ${todo.completed ? "checked" : ""} 
+          onchange="toggleTodo('${todo._id}', this.checked)" />
+
+        <span class="${todo.completed ? "completed" : ""}">
+          ${todo.title || todo.text}
+        </span>
+
+        ${todo.dueDate ? `<small>📅 ${new Date(todo.dueDate).toLocaleDateString()}</small>` : ""}
+      </div>
+
+      <div>
+       <button onclick="editTodo('${todo._id}', '${todo.title || todo.text}', '${todo.dueDate || ""}')">✏️</button>
+<button onclick="deleteTodo('${todo._id}')">🗑️</button>
+      </div>
+    `;
+
+    list.appendChild(div);
+  });
+}
+
+// ➕ ADD
+async function addTodo() {
+  const title = document.getElementById("taskInput").value;
+  const dueDate = document.getElementById("dateInput").value;
+
+  if (!title) return;
+
+  await fetch(API, {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({ title, dueDate })
+  });
+
+  document.getElementById("taskInput").value = "";
+  fetchTodos();
+}
+
+// ❌ DELETE
+async function deleteTodo(id) {
+  await fetch(`${API}/${id}`, { method: "DELETE" });
+  fetchTodos();
+}
+
+// ✅ TOGGLE
+async function toggleTodo(id, completed) {
+  await fetch(`${API}/${id}`, {
+    method: "PUT",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({ completed })
+  });
+
+  fetchTodos();
+}
+
+// 🔍 FILTER
+function setFilter(type, btn) {
+  currentFilter = type;
+
+  document.querySelectorAll(".filters button").forEach(b => b.classList.remove("active"));
+  btn.classList.add("active");
+
+  fetchTodos();
+}
+
+// 🚀 INIT
+fetchTodos();
+async function editTodo(id, oldTitle, oldDate) {
+  const newTitle = prompt("Edit task:", oldTitle);
+  if (!newTitle) return;
+
+  const newDate = prompt("Edit date (YYYY-MM-DD):", oldDate ? oldDate.split("T")[0] : "");
+
+  await fetch(`${API}/${id}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      title: newTitle,
+      dueDate: newDate
+    })
+  });
+
+  fetchTodos();
+}
+</script>
+
+</body>
+</html>
